@@ -27,6 +27,7 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)
 .days{display:flex;gap:6px;justify-content:space-between;padding-top:8px}
 .days button{width:auto;flex:1;padding:9px 0;margin:0;border-radius:50%;aspect-ratio:1}
 .days button.sel{background:var(--ac);color:#000;font-weight:bold}
+.tp{display:flex;align-items:center;gap:6px}
 .st{text-align:center;color:var(--mut);font-size:.85rem;margin-top:8px}
 
 #sleep{display:none;position:fixed;inset:0;z-index:99;background:#000;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
@@ -63,8 +64,8 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)
 
 <div class="card"><h2>Heures silencieuses</h2>
 <label>Activer <input type="checkbox" id="quiet"></label>
-<label>De <input type="time" id="qfrom"></label>
-<label>À <input type="time" id="qto"></label>
+<label>De <span class="tp" id="qfrom"></span></label>
+<label>À <span class="tp" id="qto"></span></label>
 </div>
 
 <div class="st" id="status">Le carillon est désactivé.</div>
@@ -80,7 +81,15 @@ const save=()=>{try{localStorage.setItem('carillon',JSON.stringify(S))}catch(e){
 const stepN=()=>S.step==='custom'?Math.max(1,+S.custom||1):+S.step;
 const pad=n=>String(n).padStart(2,'0');
 
-['step','custom','sound','vol','qfrom','qto'].forEach(k=>{$(k).value=S[k];$(k).addEventListener('input',()=>{S[k]=$(k).value;save();upd();sched()})});
+['step','custom','sound','vol'].forEach(k=>{$(k).value=S[k];$(k).addEventListener('input',()=>{S[k]=$(k).value;save();upd();sched()})});
+['qfrom','qto'].forEach(k=>{
+  const box=$(k),h=document.createElement('select'),m=document.createElement('select');
+  for(let i=0;i<24;i++)h.add(new Option(pad(i),i));
+  for(let i=0;i<60;i+=5)m.add(new Option(pad(i),i));
+  const [a,b]=(S[k]||'00:00').split(':').map(Number);
+  h.value=a||0;m.value=(b||0)-((b||0)%5);
+  const ch=()=>{S[k]=pad(h.value)+':'+pad(m.value);save();upd();sched()};
+  h.onchange=ch;m.onchange=ch;box.append(h,' h ',m)});
 ['count','quiet'].forEach(k=>{$(k).checked=S[k];$(k).addEventListener('change',()=>{S[k]=$(k).checked;save();upd();sched()})});
 // Jours (affichés Lun→Dim ; index = Date.getDay)
 [[1,'L'],[2,'M'],[3,'M'],[4,'J'],[5,'V'],[6,'S'],[0,'D']].forEach(([i,l])=>{
