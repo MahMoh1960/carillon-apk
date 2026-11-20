@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Carillon</title>
+<style>
+:root{--bg:#f6f3ec;--card:#fff;--tx:#2b2a27;--mut:#7a766c;--ac:#b8862b;--bd:#e3ddcf;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#17161a;--card:#222126;--tx:#f0ece2;--mut:#9b968a;--ac:#e0b050;--bd:#38363d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Georgia,'Times New Roman',serif;display:flex;justify-content:center}
+main{width:100%;max-width:460px;padding:20px 16px 40px}
+.clock{text-align:center;margin:12px 0 18px}
+#time{font-size:3.4rem;font-variant-numeric:tabular-nums}
+#next{color:var(--mut);font-size:.95rem;margin-top:4px;min-height:1.2em}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+label{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0}
+label+label{border-top:1px solid var(--bd)}
+select,input[type=time],input[type=number]{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 8px;max-width:58%}
+input[type=number]{width:90px}
+input[type=range]{accent-color:var(--ac);width:55%}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--ac)}
+button{font:inherit;border-radius:12px;border:1px solid var(--ac);padding:13px;width:100%;cursor:pointer;color:var(--tx);background:transparent;margin-bottom:10px}
+button.main{background:var(--ac);color:#fff;font-size:1.1rem}
+button.main.on{background:transparent;color:var(--ac)}
+h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:0 0 4px;font-weight:normal}
+.days{display:flex;gap:6px;justify-content:space-between;padding-top:8px}
+.days button{width:auto;flex:1;padding:9px 0;margin:0;border-radius:50%;aspect-ratio:1}
+.days button.sel{background:var(--ac);color:#fff}
+.st{text-align:center;color:var(--mut);font-size:.85rem;margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<div class="clock"><div id="time">--:--:--</div><div id="next"></div></div>
+<button class="main" id="toggle">▶ Activer le carillon</button>
+<button id="test">🔔 Écouter un aperçu</button>
+
+<div class="card"><h2>Fréquence</h2>
+<label>Sonner toutes les
+<select id="step"><option value="60">heures</option><option value="30">demi-heures</option><option value="15">quarts d’heure</option><option value="10">10 minutes</option><option value="5">5 minutes</option><option value="custom">Personnalisé…</option></select></label>
+<label id="customRow">Toutes les (minutes) <input type="number" id="custom" min="1" max="720"></label>
+</div>
+
+<div class="card"><h2>Sonorité</h2>
+<label>Son
+<select id="sound"><option value="bell">Cloche</option><option value="westminster">Westminster</option><option value="gong">Gong</option><option value="harp">Harpe</option><option value="music">Boîte à musique</option><option value="bowl">Bol tibétain</option><option value="cuckoo">Coucou</option><option value="beep">Bip</option></select></label>
+<label>Volume <input type="range" id="vol" min="0.05" max="1" step="0.05"></label>
+<label>Compter les coups à l’heure pleine <input type="checkbox" id="count"></label>
+</div>
+
+<div class="card"><h2>Jours actifs</h2><div class="days" id="days"></div></div>
+
+<div class="card"><h2>Heures silencieuses</h2>
+<label>Activer <input type="checkbox" id="quiet"></label>
+<label>De <input type="time" id="qfrom"></label>
+<label>À <input type="time" id="qto"></label>
+</div>
+
+<div class="st" id="status">Le carillon est désactivé.</div>
+<div class="st">Gardez l’application ouverte pour le son du carillon. En arrière-plan, des notifications sonnent aux mêmes heures.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const defaults={step:'60',custom:20,sound:'bell',vol:0.6,count:true,quiet:false,qfrom:'22:00',qto:'07:00',days:[1,1,1,1,1,1,1],on:false};
+let S={...defaults};
+try{Object.assign(S,JSON.parse(localStorage.getItem('carillon')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('carillon',JSON.stringify(S))}catch(e){}};
+const stepN=()=>S.step==='custom'?Math.max(1,+S.custom||1):+S.step;
+const pad=n=>String(n).padStart(2,'0');
+
+['step','custom','sound','vol','qfrom','qto'].forEach(k=>{$(k).value=S[k];$(k).addEventListener('input',()=>{S[k]=$(k).value;save();upd();sched()})});
+['count','quiet'].forEach(k=>{$(k).checked=S[k];$(k).addEventListener('change',()=>{S[k]=$(k).checked;save();upd();sched()})});
+// Jours (affichés Lun→Dim ; index = Date.getDay)
+[[1,'L'],[2,'M'],[3,'M'],[4,'J'],[5,'V'],[6,'S'],[0,'D']].forEach(([i,l])=>{
+  const b=document.createElement('button');b.textContent=l;b.className=S.days[i]?'sel':'';
+  b.onclick=()=>{S.days[i]=S.days[i]?0:1;b.classList.toggle('sel');save();upd();sched()};$('days').appendChild(b)});
+
+let ctx=null,on=false,lastKey='';
+const ac=()=>{if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext)();if(ctx.state==='suspended')ctx.resume();return ctx};
+function tone(f,t,d,type,g,parts){
+  parts=parts||[[1,1]];
+  parts.forEach(([m,a])=>{const o=ctx.createOscillator(),gn=ctx.createGain();
+    o.type=type;o.frequency.value=f*m;
+    gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(g*a*(+S.vol),t+0.01);
+    gn.gain.exponentialRampToValueAtTime(0.0001,t+d/(m>1?m*0.6:1));
+    o.connect(gn).connect(ctx.destination);o.start(t);o.stop(t+d+0.1)})}
+const BELL=[[1,1],[2.76,.5],[5.4,.3],[8.9,.15]];
+// retourne la durée utilisée par le coup
+function strike(k,t,i){
+  if(k==='bell'){tone(523,t,3,'sine',.35,BELL);return 1.1}
+  if(k==='gong'){tone(110,t,5,'sine',.5,[[1,1],[1.5,.5],[2.3,.4],[3.7,.2]]);return 2}
+  if(k==='harp'){tone(660,t,1.6,'triangle',.4,[[1,1],[2,.3]]);return 1.1}
+  if(k==='bowl'){tone(432,t,6,'sine',.4,[[1,1],[2.7,.4],[5.1,.15]]);return 3}
+  if(k==='cuckoo'){tone(784,t,.35,'sine',.45);tone(622,t+.4,.45,'sine',.45);return 1.1}
+  if(k==='music'){[523,659,784,1047].forEach((f,j)=>tone(f,t+j*.22,1.2,'triangle',.3,[[1,1],[3,.2]]));return 1.6}
+  tone(880,t,.15,'square',.12);return .35}
+const N={E4:329.6,F4s:370,G4s:415.3,B3:246.9};
+const WM=[['G4s','F4s','E4','B3'],['E4','G4s','F4s','B3'],['E4','F4s','G4s','E4'],['G4s','E4','F4s','B3'],['B3','F4s','G4s','E4']];
+function chime(min,hour){
+  ac();let t=ctx.currentTime+.1;const h=hour%12||12;
+  if(S.sound==='westminster'){
+    const q=min===0?4:Math.round(min/15);
+    const seq={1:[0],2:[1,2],3:[3,4,0],4:[3,4,0,1]}[q]||[0];
+    seq.forEach(p=>{WM[p].forEach(n=>{tone(N[n],t,2.2,'sine',.4,BELL.slice(0,2));t+=.7});t+=.5});
+    if(min===0){t+=.6;for(let i=0;i<(S.count?h:1);i++){tone(165,t,3,'sine',.5,BELL);t+=1.4}}
+    return}
+  const n=(min===0&&S.count)?h:1;
+  for(let i=0;i<n;i++)t+=strike(S.sound,t,i)}
+function inQuiet(d){
+  if(!S.quiet)return false;
+  const m=d.getHours()*60+d.getMinutes(),p=s=>{const [a,b]=s.split(':').map(Number);return a*60+b};
+  const a=p(S.qfrom),b=p(S.qto);return a<=b?(m>=a&&m<b):(m>=a||m<b)}
+const isChime=d=>(d.getHours()*60+d.getMinutes())%stepN()===0&&S.days[d.getDay()]&&!inQuiet(d);
+function nextChime(){const d=new Date();d.setSeconds(0,0);
+  for(let i=0;i<8*24*60;i++){d.setMinutes(d.getMinutes()+1);if(isChime(d))return new Date(d)}return null}
+function upd(){
+  const d=new Date();$('time').textContent=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  $('customRow').style.display=S.step==='custom'?'flex':'none';
+  if(!on){$('next').textContent='';return}
+  const n=nextChime();if(!n){$('next').textContent='Aucun carillon prévu';return}
+  const s=Math.max(0,Math.round((n-d)/1000));
+  $('next').textContent=`Prochain : ${pad(n.getHours())}:${pad(n.getMinutes())} (dans ${Math.floor(s/60)} min ${pad(s%60)} s)`}
+function tick(){
+  const d=new Date();
+  if(on){const key=`${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+    if(key!==lastKey&&d.getSeconds()<10&&isChime(d)){lastKey=key;chime(d.getMinutes(),d.getHours());$('status').textContent=`Dernier carillon : ${pad(d.getHours())}:${pad(d.getMinutes())}`}}
+  upd()}
+// Notifications natives (Android) : programmées pour les prochaines heures de carillon
+const LN=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.LocalNotifications;
+async function sched(){
+  if(!LN)return;
+  try{const p=await LN.getPending();if(p.notifications.length)await LN.cancel({notifications:p.notifications});
+    if(!on)return;
+    const d=new Date();d.setSeconds(0,0);const list=[];
+    for(let i=0;i<4*24*60&&list.length<60;i++){d.setMinutes(d.getMinutes()+1);
+      if(isChime(d))list.push({id:list.length+1,title:'🔔 Carillon',body:`Il est ${pad(d.getHours())}:${pad(d.getMinutes())}`,schedule:{at:new Date(d),allowWhileIdle:true}})}
+    if(list.length)await LN.schedule({notifications:list})}catch(e){}}
+async function setOn(v){
+  on=v;S.on=v;save();
+  if(on){ac();const d=new Date();lastKey=`${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+    if(LN){try{await LN.requestPermissions()}catch(e){}}$('status').textContent='Carillon actif.'}
+  else $('status').textContent='Le carillon est désactivé.';
+  $('toggle').textContent=on?'⏸ Désactiver le carillon':'▶ Activer le carillon';
+  $('toggle').classList.toggle('on',on);upd();sched()}
+$('toggle').onclick=()=>setOn(!on);
+$('test').onclick=()=>{const d=new Date(),s=stepN();chime(s>=60?0:(s%30===0?30:15),d.getHours())};
+setInterval(tick,500);setInterval(sched,3600000);tick();
+</script>
+</body>
+</html>
