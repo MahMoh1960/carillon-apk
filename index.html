@@ -21,13 +21,22 @@ input[type=number]{width:90px}
 input[type=range]{accent-color:var(--ac);width:55%}
 input[type=checkbox]{width:22px;height:22px;accent-color:var(--ac)}
 button{font:inherit;border-radius:12px;border:1px solid var(--ac);padding:13px;width:100%;cursor:pointer;color:var(--tx);background:transparent;margin-bottom:10px}
-button.main{background:var(--ac);color:#fff;font-size:1.1rem}
+button.main{background:var(--ac);color:#000;font-size:1.1rem;font-weight:bold}
 button.main.on{background:transparent;color:var(--ac)}
 h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);margin:0 0 4px;font-weight:normal}
 .days{display:flex;gap:6px;justify-content:space-between;padding-top:8px}
 .days button{width:auto;flex:1;padding:9px 0;margin:0;border-radius:50%;aspect-ratio:1}
-.days button.sel{background:var(--ac);color:#fff}
+.days button.sel{background:var(--ac);color:#000;font-weight:bold}
 .st{text-align:center;color:var(--mut);font-size:.85rem;margin-top:8px}
+
+#sleep{display:none;position:fixed;inset:0;z-index:99;background:#000;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+#sleep.show{display:flex}
+.rb{background:linear-gradient(90deg,#ff0040,#ff8c00,#ffe600,#00e676,#00b0ff,#7c4dff,#ff00e5,#ff0040);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:rb 6s linear infinite}
+@keyframes rb{to{background-position:300% 0}}
+.sv{font-weight:bold;line-height:.9;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:center;font-size:42vw}
+.sv .sep{display:none}
+#ss{font-size:9vw;font-weight:bold}#sd{font-size:4.5vw;margin-top:2vh;text-transform:capitalize}
+@media (orientation:landscape){.sv{flex-direction:row;font-size:min(26vw,68vh)}.sv .sep{display:block}#ss{font-size:7vh}#sd{font-size:4vh}}
 </style>
 </head>
 <body>
@@ -35,6 +44,7 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)
 <div class="clock"><div id="time">--:--:--</div><div id="next"></div></div>
 <button class="main" id="toggle">▶ Activer le carillon</button>
 <button id="test">🔔 Écouter un aperçu</button>
+<button id="sleepBtn">🌈 Mode veille (heure en plein écran)</button>
 
 <div class="card"><h2>Fréquence</h2>
 <label>Sonner toutes les
@@ -60,6 +70,7 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)
 <div class="st" id="status">Le carillon est désactivé.</div>
 <div class="st">Gardez l’application ouverte pour le son du carillon. En arrière-plan, des notifications sonnent aux mêmes heures.</div>
 </main>
+<div id="sleep"><div class="sv"><span class="rb" id="sh">00</span><span class="rb sep">:</span><span class="rb" id="sm">00</span></div><div class="rb" id="ss">00</div><div class="rb" id="sd"></div><div id="sn" style="color:#888;font-size:5vw;margin-top:2vh"></div><div style="color:#555;font-size:.8rem;position:absolute;bottom:calc(14px + env(safe-area-inset-bottom,0px))">Touchez l’écran pour quitter</div></div>
 <script>
 const $=id=>document.getElementById(id);
 const defaults={step:'60',custom:20,sound:'bell',vol:0.6,count:true,quiet:false,qfrom:'22:00',qto:'07:00',days:[1,1,1,1,1,1,1],on:false};
@@ -115,6 +126,7 @@ const isChime=d=>(d.getHours()*60+d.getMinutes())%stepN()===0&&S.days[d.getDay()
 function nextChime(){const d=new Date();d.setSeconds(0,0);
   for(let i=0;i<8*24*60;i++){d.setMinutes(d.getMinutes()+1);if(isChime(d))return new Date(d)}return null}
 function upd(){
+  updSleep();
   const d=new Date();$('time').textContent=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   $('customRow').style.display=S.step==='custom'?'flex':'none';
   if(!on){$('next').textContent='';return}
@@ -145,6 +157,18 @@ async function setOn(v){
   $('toggle').classList.toggle('on',on);upd();sched()}
 $('toggle').onclick=()=>setOn(!on);
 $('test').onclick=()=>{const d=new Date(),s=stepN();chime(s>=60?0:(s%30===0?30:15),d.getHours())};
+function updSleep(){
+  const o=$('sleep');if(!o.classList.contains('show'))return;
+  const d=new Date();
+  $('sh').textContent=pad(d.getHours());$('sm').textContent=pad(d.getMinutes());$('ss').textContent=pad(d.getSeconds());
+  $('sd').textContent=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  const n=on?nextChime():null;$('sn').textContent=n?`🔔 ${pad(n.getHours())}:${pad(n.getMinutes())}`:''}
+let wl=null;
+async function lock(){try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}}
+function openSleep(){$('sleep').classList.add('show');lock();updSleep()}
+function closeSleep(){$('sleep').classList.remove('show');try{wl&&wl.release()}catch(e){}wl=null}
+$('sleepBtn').onclick=openSleep;$('sleep').onclick=closeSleep;
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&$('sleep').classList.contains('show'))lock()});
 setInterval(tick,500);setInterval(sched,3600000);tick();
 </script>
 </body>
